@@ -23,3 +23,7 @@ TARGET_OTA_ASSERT_DEVICE := Infinix-X695C
 
 # TWRP Configs
 TW_DEVICE_VERSION := Infinix-X695C | ExcaliburXD
+
+# Init
+TARGET_INIT_VENDOR_LIB := libinit_Infinix-X695C
+TARGET_RECOVERY_DEVICE_MODULES := libinit_Infinix-X695C
