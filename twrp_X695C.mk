@@ -13,11 +13,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Inherit from Infinix-X695C device
-$(call inherit-product, device/transsion/mt6785-common/device.mk)
+# Inherit from Infinix-X695C
+$(call inherit-product, device/infinix/Infinix-X695C/device.mk)
 
-PRODUCT_DEVICE := Infinix-X695C
+# Inherit some common TWRP stuff.
+$(call inherit-product, vendor/twrp/config/common.mk)
+
 PRODUCT_NAME := twrp_X695C
+PRODUCT_DEVICE := Infinix-X695C
 PRODUCT_BRAND := Infinix
 PRODUCT_MODEL := Infinix X695C
 PRODUCT_MANUFACTURER := INFINIX
