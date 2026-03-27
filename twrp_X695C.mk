@@ -1,5 +1,6 @@
 #
-# Copyright (C) 2025 The TWRP Open Source Project
+# Copyright (C) 2026 The TWRP Open Source Project
+# Copyright (C) 2026 The TWRP Open Source Project
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,16 +14,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Inherit from Infinix-X695C
+# Inherit from Infinix-X695C device
 $(call inherit-product, device/infinix/Infinix-X695C/device.mk)
 
 # Inherit some common TWRP stuff.
 $(call inherit-product, vendor/twrp/config/common.mk)
 
-PRODUCT_NAME := twrp_X695C
+# Device identifier. This must come after all inclusions
 PRODUCT_DEVICE := Infinix-X695C
+PRODUCT_NAME := twrp_X695C
 PRODUCT_BRAND := Infinix
 PRODUCT_MODEL := Infinix X695C
-PRODUCT_MANUFACTURER := INFINIX
+PRODUCT_MANUFACTURER := INFINIX MOBILITY LIMITED
 
-PRODUCT_GMS_CLIENTID_BASE := android-infinix
+PRODUCT_GMS_CLIENTID_BASE := android-transsion

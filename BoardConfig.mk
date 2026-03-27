@@ -1,5 +1,6 @@
 #
-# Copyright (C) 2024 The TWRP Open Source Project
+# Copyright (C) 2026 The TWRP Open Source Project
+# Copyright (C) 2026 The TWRP Open Source Project
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -17,9 +18,6 @@ DEVICE_PATH := device/infinix/Infinix-X695C
 
 # Inherit from mt6785-common
 include device/transsion/mt6785-common/BoardConfigCommon.mk
-
-# Assert
-TARGET_OTA_ASSERT_DEVICE := Infinix-X695C
 
 # TWRP Configs
 TW_DEVICE_VERSION := Infinix-X695C | ExcaliburXD
