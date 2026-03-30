@@ -1,6 +1,6 @@
 #
 # Copyright (C) 2026 The TWRP Open Source Project
-# Copyright (C) 2026 The TWRP Open Source Project
+# Copyright (C) 2026 The PBRP Open Source Project
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -17,8 +17,8 @@
 # Inherit from Infinix-X695C device
 $(call inherit-product, device/infinix/Infinix-X695C/device.mk)
 
-# Inherit some common TWRP stuff.
-$(call inherit-product, vendor/twrp/config/common.mk)
+# Inherit some common PBRP stuff.
+$(call inherit-product, vendor/pb/config/common.mk)
 
 # Device identifier. This must come after all inclusions
 PRODUCT_DEVICE := Infinix-X695C
