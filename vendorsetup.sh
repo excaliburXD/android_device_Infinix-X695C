@@ -3,9 +3,6 @@
 # clone common device tree
 git clone https://github.com/excaliburXD/android_transsion_mt6785-common_twrp.git -b android-11.0 device/transsion/mt6785-common
 
-# Locale & Device Configuration
-export FOX_TARGET_DEVICES="X695C,Infinix-X695C"
-
 # Partitions Recovery
 export FOX_RECOVERY_BOOT_PARTITION="/dev/block/platform/bootdevice/by-name/boot"
 export FOX_RECOVERY_SYSTEM_PARTITION="/dev/block/by-name/system"
