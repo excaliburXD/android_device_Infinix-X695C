@@ -14,11 +14,11 @@ on:
       DEVICE_TREE_URL:
         description: 'DEVICE_TREE_URL'
         required: true
-        default: 'https://github.com/excaliburXD/android_device_Infinix_X695C-ofrp.git'
+        default: 'https://github.com/excaliburXD/android_device_Infinix_X695C.git'
       DEVICE_TREE_BRANCH:
         description: 'DEVICE_TREE_BRANCH'
         required: true
-        default: 'pbrp-11.0'
+        default: 'pbrp_11.0'
       DEVICE_PATH:
         description: 'DEVICE_PATH'
         required: true
