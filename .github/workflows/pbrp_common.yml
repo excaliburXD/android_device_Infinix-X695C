@@ -153,7 +153,6 @@ jobs:
         mv device_tree "$DEVICE_DIRECTORY"/"$DEVICE_NAME"
 
     - name: Installing python2 for legacy builds
-      if: env.CHECK_LEGACY_BRANCH == 'true'
       run: |
         sudo apt-get install python2 python-is-python2
 
