@@ -1,6 +1,6 @@
 #
 # Copyright (C) 2026 The TWRP Open Source Project
-# Copyright (C) 2026 The TWRP Open Source Project
+# Copyright (C) 2026 The PBRP Open Source Project
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -19,6 +19,15 @@ DEVICE_PATH := device/infinix/Infinix-X695C
 # Inherit from mt6785-common
 include device/transsion/mt6785-common/BoardConfigCommon.mk
 
+# PBRP Configs
+PB_DISABLE_DEFAULT_DM_VERITY := true
+
+# Assert
+TARGET_OTA_ASSERT_DEVICE := X695C,Infinix-X695C
+
 # Init
 TARGET_INIT_VENDOR_LIB := libinit_Infinix-X695C
 TARGET_RECOVERY_DEVICE_MODULES := libinit_Infinix-X695C
+
+# Maintainer
+TW_DEVICE_VERSION := Infinix Note 10 Pro NFC | ExcaliburXD
