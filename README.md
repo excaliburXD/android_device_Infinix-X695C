@@ -1,4 +1,4 @@
-# OFRP Device Tree for Infinix X695C
+# PBRP Device Tree for Infinix X695C
 
 [![TWRP](https://img.shields.io/badge/TWRP-11-blue.svg)](https://github.com/minimal-manifest-twrp/platform_manifest_twrp_aosp)
 [![Device](https://img.shields.io/badge/Device-X695C-green.svg)]()
