@@ -4,7 +4,7 @@
 [![Device](https://img.shields.io/badge/Device-X695C-green.svg)]()
 [![Platform](https://img.shields.io/badge/Platform-MT6785-orange.svg)]()
 
-Orangefox recovery device tree for **Infinix Note 10 Pro (X695C)** - MediaTek MT6785 (Helio G95)
+PitchBlack recovery device tree for **Infinix Note 10 Pro (X695C)** - MediaTek MT6785 (Helio G95)
 
 ---
 
