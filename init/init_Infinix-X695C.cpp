@@ -28,7 +28,7 @@ void vendor_load_properties()
         property_override(string("ro.product.") + prop + string("name"), "X695C-GL");
         property_override(string("ro.product.") + prop + string("device"), "Infinix-X695C");
         property_override(string("ro.product.") + prop + string("model"), "Infinix X695C");
-        property_override(string("ro.product.") + prop + string("marketname"), "Infinix Note 10 Pro");
-        property_override(string("ro.product.system.") + prop + string("device"), "Infinix Note 10 Pro");
+        property_override(string("ro.product.") + prop + string("marketname"), "Infinix Note 10 Pro NFC");
+        property_override(string("ro.product.system.") + prop + string("device"), "Infinix Note 10 NFC");
     }
 }
