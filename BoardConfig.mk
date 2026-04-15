@@ -16,8 +16,3 @@ TARGET_OTA_ASSERT_DEVICE := X695C,Infinix-X695C
 # Init
 TARGET_INIT_VENDOR_LIB := libinit_Infinix-X695C
 TARGET_RECOVERY_DEVICE_MODULES := libinit_Infinix-X695C
-
-# Exclude # (Reduced boot.img size 32mb)
-TW_EXCLUDE_BASH := true
-TW_EXCLUDE_NANO := true
-TW_EXCLUDE_LPTOOLS := true
