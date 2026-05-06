@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # clone common device tree
-git clone https://github.com/excaliburXD/android_transsion_mt6785-common_twrp.git -b android-11.0 device/transsion/mt6785-common
+git clone https://github.com/excaliburXD/android_transsion_mt6785-common_twrp.git -b fix/force-normal-boot-direct-homescreen device/transsion/mt6785-common
 
 # Partitions Recovery
 export FOX_RECOVERY_BOOT_PARTITION="/dev/block/platform/bootdevice/by-name/boot"
@@ -37,6 +37,15 @@ export OF_MAINTAINER="excaliburXD"
 # AVB & Treble
 export OF_PATCH_AVB20=1
 export OF_NO_TREBLE_COMPATIBILITY_CHECK=1
+
+# [FIX] Force Normal Boot Support
+# This is the CRITICAL fix for direct boot to homescreen.
+# Without this, OrangeFox init always enters recovery mode and never
+# performs switch_root to the system partition for normal Android boot.
+# This flag tells the OrangeFox build system to include ForceNormalBoot
+# patches in the init binary that respect androidboot.force_normal_boot=1
+# from the kernel cmdline.
+export OF_FORCE_NORMAL_BOOT=1
 
 # UI & Hardware Features
 export OF_USE_GREEN_LED=0
