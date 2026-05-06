@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # clone common device tree
-git clone https://github.com/excaliburXD/android_transsion_mt6785-common_twrp.git -b android-11.0 device/transsion/mt6785-common
+git clone https://github.com/excaliburXD/android_transsion_mt6785-common_twrp.git -b backup device/transsion/mt6785-common
 
 # Partitions Recovery
 export FOX_RECOVERY_BOOT_PARTITION="/dev/block/platform/bootdevice/by-name/boot"
@@ -29,7 +29,7 @@ export FOX_USE_TAR_BINARY=1
 export FOX_USE_XZ_UTILS=1
 
 # Build Metadata
-export FOX_BUILD_TYPE="mt6785-common"
+export FOX_BUILD_TYPE="mt6785-common-backup"
 export FOX_VERSION="R11.1"
 export FOX_VARIANT="XOS"
 export OF_MAINTAINER="excaliburXD"
