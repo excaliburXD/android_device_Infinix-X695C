@@ -31,20 +31,14 @@ export FOX_USE_XZ_UTILS=1
 # Build Metadata
 export FOX_BUILD_TYPE="mt6785-common"
 export FOX_VERSION="R11.1"
-export FOX_VARIANT="XOS"
+export FOX_VARIANT="GSI-Version"
 export OF_MAINTAINER="excaliburXD"
 
 # AVB & Treble
 export OF_PATCH_AVB20=1
 export OF_NO_TREBLE_COMPATIBILITY_CHECK=1
 
-# [FIX] Force Normal Boot Support
-# This is the CRITICAL fix for direct boot to homescreen.
-# Without this, OrangeFox init always enters recovery mode and never
-# performs switch_root to the system partition for normal Android boot.
-# This flag tells the OrangeFox build system to include ForceNormalBoot
-# patches in the init binary that respect androidboot.force_normal_boot=1
-# from the kernel cmdline.
+# Force Normal Boot Support
 export OF_FORCE_NORMAL_BOOT=1
 
 # UI & Hardware Features
