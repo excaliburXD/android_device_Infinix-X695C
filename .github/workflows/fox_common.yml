@@ -141,34 +141,6 @@ jobs:
         cd ${{ github.event.inputs.DEVICE_PATH }}
         echo "COMMIT_ID=$(git rev-parse HEAD)" >> $GITHUB_ENV
 
-    # =====================================================================
-    # [FIX] Strip twrpfastboot=1 from TWRP BoardConfig at build time
-    # =====================================================================
-    # Root cause: vendor/twrp/BoardConfigTWRP.mk appends `twrpfastboot=1`
-    # to GENERIC_KERNEL_CMDLINE at build time. This flag causes the
-    # recovery-variant init binary to ALWAYS enter recovery mode, skipping
-    # first_stage_mount even when androidboot.force_normal_boot=1 is set.
-    #
-    # The sed is idempotent: if the pattern doesn't match, no-op (exit 0).
-    # If vendor/twrp/BoardConfigTWRP.mk doesn't exist, the find returns
-    # empty and the loop body doesn't execute.
-    # =====================================================================
-    - name: Patch TWRP BoardConfig (strip twrpfastboot=1)
-      run: |
-        cd ${GITHUB_WORKSPACE}/OrangeFox/fox_${{ inputs.MANIFEST_BRANCH }}
-        echo "Searching for vendor/twrp/BoardConfigTWRP.mk files..."
-        find . -path '*/vendor/twrp/*BoardConfigTWRP*.mk' -type f | while read -r f; do
-          echo "  Found: $f"
-          if grep -q 'twrpfastboot=1' "$f"; then
-            echo "    → Contains twrpfastboot=1, patching..."
-            sed -i -E "s/[[:space:]]+twrpfastboot=1//g; s/twrpfastboot=1[[:space:]]+//g; s/twrpfastboot=1//g" "$f"
-            echo "    → Patched. Remaining twrpfastboot occurrences: $(grep -c twrpfastboot "$f" || true)"
-          else
-            echo "    → Does not contain twrpfastboot=1, skipping"
-          fi
-        done
-        echo "Patch step complete."
-
     - name: Find Makefile
       run: |
         cd ${GITHUB_WORKSPACE}/OrangeFox/fox_${{ inputs.MANIFEST_BRANCH }}
