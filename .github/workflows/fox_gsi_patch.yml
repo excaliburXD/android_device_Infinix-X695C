@@ -1,0 +1,290 @@
+name: OrangeFox GSI UI Patch
+
+on:
+  workflow_dispatch:
+    inputs:
+      RELEASE_TAG:
+        description: 'Release tag (run ID) to patch. Leave empty to use latest.'
+        required: false
+        default: ''
+      DEVICE_NAME:
+        description: 'Device name (matches release asset filename)'
+        required: true
+        default: 'Infinix-X695C'
+
+jobs:
+  patch:
+    name: Patch boot.img with Flash GSI wizard
+    runs-on: ubuntu-latest
+    if: github.event.sender.id == github.event.repository.owner.id
+    env:
+      # Use the auto-provided GITHUB_TOKEN (not a custom 'RECOVERY' secret).
+      # This token has contents:write permission via the permissions: block below,
+      # which is enough to read+upload release assets in the same repo.
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout device tree (for flash_gsi.xml + gsi_run.sh + patch script)
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3 file
+
+      - name: Fetch magiskboot binary
+        run: |
+          # magiskboot is part of Magisk. We download a PINNED Magisk release
+          # (L4 fix: pin version to avoid API breaking changes in future releases)
+          # and extract magiskboot from the .apk
+          set -e
+          mkdir -p ${{ github.workspace }}/tools
+          cd ${{ github.workspace }}/tools
+          
+          # L4 fix: pin Magisk version. Update this SHA + URL when intentionally upgrading.
+          # v30.7 is the latest stable as of 2026-07. Pinning prevents silent breakage
+          # if Magisk changes cpio subcommands or boot header format in a future release.
+          MAGISK_VERSION="v30.7"
+          MAGISK_URL="https://github.com/topjohnwu/Magisk/releases/download/${MAGISK_VERSION}/app-debug.apk"
+          echo "Downloading Magisk ${MAGISK_VERSION} from: $MAGISK_URL"
+          curl -sL -o magisk.apk "$MAGISK_URL"
+          
+          # Verify download succeeded (non-zero file)
+          if [ ! -s magisk.apk ]; then
+            echo "ERROR: magisk.apk download failed or empty"
+            exit 1
+          fi
+          
+          # magiskboot is in lib/<arch>/libmagiskboot.so (renamed from magiskboot)
+          # We use the x86_64 binary inside the apk
+          unzip -p magisk.apk lib/x86_64/libmagiskboot.so > magiskboot
+          chmod +x magiskboot
+          
+          # Verify it runs
+          ./magiskboot --help 2>&1 | head -3 || true
+          echo "magiskboot binary ready: $(pwd)/magiskboot (Magisk ${MAGISK_VERSION})"
+
+      - name: Determine target release
+        env:
+          GH_TOKEN: ${{ env.GITHUB_TOKEN }}
+        run: |
+          set -e
+          
+          # Determine target release tag
+          if [ -n "${{ github.event.inputs.RELEASE_TAG }}" ]; then
+            TAG="${{ github.event.inputs.RELEASE_TAG }}"
+          else
+            # Get latest release tag (using API auth to avoid rate limit)
+            TAG=$(curl -sL -H "Authorization: token $GH_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/${{ github.repository }}/releases/latest" \
+              | python3 -c "
+          import json, sys
+          d = json.load(sys.stdin)
+          if 'tag_name' not in d:
+              print(f\"ERROR: API returned no tag_name. Response: {d}\", file=sys.stderr)
+              sys.exit(1)
+          print(d['tag_name'])
+          ")
+          fi
+          echo "Target release tag: $TAG"
+          echo "tag=$TAG" >> $GITHUB_ENV
+          
+          # Fetch release metadata
+          RESPONSE_FILE=/tmp/release_meta.json
+          curl -sL -H "Authorization: token $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${{ github.repository }}/releases/tags/$TAG" \
+            > $RESPONSE_FILE
+          
+          # Sanity check the response is valid JSON with expected fields
+          python3 -c "
+          import json, sys
+          with open('$RESPONSE_FILE') as f:
+              d = json.load(f)
+          if 'assets' not in d:
+              print(f\"ERROR: API response missing 'assets' field. Full response:\", file=sys.stderr)
+              print(json.dumps(d, indent=2), file=sys.stderr)
+              sys.exit(1)
+          print(f\"Release '{d.get('name','?')}' has {len(d.get('assets',[]))} assets:\")
+          for a in d.get('assets', []):
+              print(f\"  - {a['name']} ({a['size']//1024} KB)\")
+          "
+          
+          # Find .img asset URL (excluding already-patched GSI assets).
+          # DEVICE_NAME input is 'Infinix-X695C' but OrangeFox names files as
+          # 'OrangeFox-R11.1_XOS-mt6785-common-X695C.img' (codename only, no 'Infinix-' prefix).
+          # So we extract the codename (everything after the last '-') and match flexibly.
+          ASSET_URL=$(python3 -c "
+          import json
+          with open('$RESPONSE_FILE') as f:
+              d = json.load(f)
+          full_name = '${{ github.event.inputs.DEVICE_NAME }}'
+          # Extract codename: 'Infinix-X695C' -> 'X695C'
+          codename = full_name.rsplit('-', 1)[-1] if '-' in full_name else full_name
+          for a in d.get('assets', []):
+              n = a['name']
+              if (n.endswith('.img')
+                      and codename in n
+                      and 'GSI' not in n
+                      and not n.startswith('OrangeFox-GSI-')):
+                  print(a['url'])
+                  break
+          ")
+          
+          if [ -z "$ASSET_URL" ]; then
+            echo "ERROR: no .img asset found in release $TAG"
+            echo "Looking for: *X695C*.img (codename extracted from DEVICE_NAME='Infinix-X695C')"
+            echo "Excluding: *GSI*.img and OrangeFox-GSI-*.img"
+            exit 1
+          fi
+          echo "Asset URL: $ASSET_URL"
+          echo "asset_url=$ASSET_URL" >> $GITHUB_ENV
+          
+          # Extract upload_url (strip the {?name,label} template suffix)
+          UPLOAD_URL=$(python3 -c "
+          import json
+          with open('$RESPONSE_FILE') as f:
+              d = json.load(f)
+          print(d['upload_url'].split('{')[0])
+          ")
+          echo "upload_url=$UPLOAD_URL" >> $GITHUB_ENV
+
+      - name: Download original boot.img
+        env:
+          GH_TOKEN: ${{ env.GITHUB_TOKEN }}
+        run: |
+          mkdir -p ${{ github.workspace }}/work
+          cd ${{ github.workspace }}/work
+          
+          # Download with API auth (asset URL requires auth header)
+          # The Accept: application/octet-stream header makes GitHub redirect
+          # to the actual S3 download URL
+          curl -sL -H "Authorization: token $GH_TOKEN" \
+               -H "Accept: application/octet-stream" \
+               -o original.img \
+               "$asset_url"
+          
+          ls -la original.img
+          file original.img
+          
+          # Verify it's an Android boot image
+          if ! head -c 8 original.img | grep -q "ANDROID!"; then
+            echo "ERROR: downloaded file is not an Android boot image"
+            echo "First 16 bytes:"
+            xxd original.img | head -1
+            exit 1
+          fi
+          echo "Downloaded boot image is valid (ANDROID! magic present)"
+
+      - name: Patch boot.img
+        run: |
+          cd ${{ github.workspace }}/work
+          
+          # Copy gsi_run.sh from device tree (recovery/root/sbin/) to gsi-patch/ working dir
+          mkdir -p patch_files
+          cp ${{ github.workspace }}/.github/gsi-patch/flash_gsi.xml patch_files/
+          cp ${{ github.workspace }}/recovery/root/sbin/gsi_run.sh patch_files/
+          
+          # Run the patch script. Pass ABSOLUTE paths for all arguments because
+          # the Python script does os.chdir() internally, which would break
+          # relative path resolution.
+          set +e
+          python3 ${{ github.workspace }}/.github/gsi-patch/patch_orangefox_gsi.py \
+            ${{ github.workspace }}/work/original.img \
+            ${{ github.workspace }}/work/OrangeFox-GSI-${{ github.event.inputs.DEVICE_NAME }}.img \
+            ${{ github.workspace }}/tools/magiskboot \
+            ${{ github.workspace }}/work/patch_files
+          RC=$?
+          set -e
+          
+          if [ $RC -ne 0 ]; then
+            echo "ERROR: patch script failed with exit code $RC"
+            echo "=== magiskboot unpack output (if any) ==="
+            ls -la /tmp/ofox_gsi_patch/ 2>/dev/null || true
+            exit $RC
+          fi
+          
+          echo "=== Patched image ==="
+          ls -la OrangeFox-GSI-*.img
+          file OrangeFox-GSI-*.img
+          
+          echo "=== Patched image ==="
+          ls -la OrangeFox-GSI-*.img
+          file OrangeFox-GSI-*.img
+          
+          # Verify patched image is still valid
+          if ! head -c 8 OrangeFox-GSI-*.img | grep -q "ANDROID!"; then
+            echo "ERROR: patched image is not a valid Android boot image"
+            exit 1
+          fi
+          
+          # Verify twrpfastboot=1 still absent in patched image (sanity check)
+          # M6 fix: parse boot header via Python struct.unpack instead of fragile
+          # `strings | grep` which can match kernel/ramdisk strings instead of header.
+          # Single-line python3 -c to avoid YAML block scalar indentation issues.
+          CMDLINE=$(python3 -c "import struct,sys; f=open('OrangeFox-GSI-Infinix-X695C.img','rb'); d=f.read(16384); f.close(); sys.exit(1) if d[:8]!=b'ANDROID!' else None; print(d[64:64+512].rstrip(b'\x00').decode('utf-8',errors='replace'))")
+          echo "Patched cmdline: $CMDLINE"
+          if echo "$CMDLINE" | grep -q "twrpfastboot=1"; then
+            echo "ERROR: twrpfastboot=1 re-appeared in patched image!"
+            exit 1
+          fi
+          echo "twrpfastboot=1 confirmed ABSENT in patched image"
+
+      - name: Upload patched image as new release asset
+        env:
+          GH_TOKEN: ${{ env.GITHUB_TOKEN }}
+        run: |
+          cd ${{ github.workspace }}/work
+          
+          ASSET_NAME="OrangeFox-GSI-${{ github.event.inputs.DEVICE_NAME }}.img"
+          
+          # Check if asset already exists (from previous run) — delete if so
+          EXISTING_ASSET_ID=$(curl -sL -H "Authorization: token $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${{ github.repository }}/releases/tags/$tag" \
+            | python3 -c "
+          import json, sys
+          d = json.load(sys.stdin)
+          for a in d.get('assets', []):
+              if a['name'] == '$ASSET_NAME':
+                  print(a['id'])
+                  break
+          ")
+          
+          if [ -n "$EXISTING_ASSET_ID" ]; then
+            echo "Deleting existing asset (id=$EXISTING_ASSET_ID)..."
+            curl -sL -X DELETE -H "Authorization: token $GH_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/${{ github.repository }}/releases/assets/$EXISTING_ASSET_ID"
+          fi
+          
+          # Upload new asset
+          echo "Uploading $ASSET_NAME to release $tag..."
+          curl -sL -X POST \
+            -H "Authorization: token $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "Content-Type: application/octet-stream" \
+            --data-binary "@$ASSET_NAME" \
+            "${upload_url}?name=$ASSET_NAME" \
+            | python3 -c "
+          import json, sys
+          d = json.load(sys.stdin)
+          if 'browser_download_url' in d:
+              print('Upload SUCCESS:', d['browser_download_url'])
+          else:
+              print('Upload FAILED:', json.dumps(d, indent=2))
+              sys.exit(1)
+          "
+          
+          echo ""
+          echo "=== Done ==="
+          echo "Release: https://github.com/${{ github.repository }}/releases/tag/$tag"
+          echo "Asset:   $ASSET_NAME"
