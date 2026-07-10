@@ -1,4 +1,4 @@
-name: Recovery Builder - Prebuilt
+name: Recovery Builder - Infinix-X695C - mt6785-common
 
 on:
   workflow_dispatch:
