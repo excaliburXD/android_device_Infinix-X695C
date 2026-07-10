@@ -1,4 +1,4 @@
-name: Recovery Builder - OFRP mt6785-common 
+name: Recovery Builder - Prebuilt
 
 on:
   workflow_dispatch:
@@ -15,22 +15,22 @@ on:
         description: 'Custom Recovery Tree URL'
         required: true
         default: 'https://github.com/excaliburXD/android_device_Infinix-X695C.git'
+      COMMON_TREE:
+        description: 'Common Device Tree URL'
+        required: true
+        default: 'https://github.com/excaliburXD/android_transsion_mt6785-common_twrp.git'
+      COMMON_TREE_BRANCH:
+        description: 'Common Device Tree Branch'
+        required: true
+        default: 'android-11.0'
       DEVICE_TREE_BRANCH:
         description: 'Device Tree Branch'
         required: true
-        default: 'fix/force-normal-boot-direct-homescreen'
+        default: 'fox_11.1'
       DEVICE_PATH:
-        description: 'Device Path (e.g., device/xiaomi/sweet)'
+        description: 'Device Path'
         required: true
         default: 'device/infinix/Infinix-X695C'
-      DEVICE_NAME:
-        description: 'Device Codename'
-        required: true
-        default: 'Infinix-X695C'
-      MAKEFILE_NAME:
-        description: 'MAKEFILE_NAME'
-        required: true
-        default: 'twrp_X695C'
       BUILD_TARGET:
         description: 'Build Target'
         required: true
@@ -74,6 +74,8 @@ jobs:
         echo "Build Target: ${{ github.event.inputs.BUILD_TARGET }}"
         echo "Build Type: ${{ github.event.inputs.BUILD_TYPE }}"
         echo "Device Tree: ${{ github.event.inputs.DEVICE_TREE }}"
+        echo "Common Tree: ${{ github.event.inputs.COMMON_TREE }}"
+        echo "Common Tree Branch: ${{ github.event.inputs.COMMON_TREE_BRANCH }}"
         echo "Device Tree Branch: ${{ github.event.inputs.DEVICE_TREE_BRANCH }}"
         echo "Device Path: ${{ github.event.inputs.DEVICE_PATH }}"
         echo "LDCHECK: ${{ github.event.inputs.LDCHECK }}"
@@ -127,6 +129,38 @@ jobs:
         cd sync/legacy
         ./orangefox_sync_legacy.sh --branch ${{ inputs.MANIFEST_BRANCH }} --path ${GITHUB_WORKSPACE}/OrangeFox/fox_${{ inputs.MANIFEST_BRANCH }}
 
+    - name: Copy local manifest
+      run: |
+        cd ${GITHUB_WORKSPACE}/OrangeFox/fox_${{ inputs.MANIFEST_BRANCH }}
+        mkdir -p .repo/local_manifests
+        cp ${{ github.workspace }}/.github/local_manifests/*.xml .repo/local_manifests/
+        echo "=== local_manifests/ contents ==="
+        ls -la .repo/local_manifests/
+        for f in .repo/local_manifests/*.xml; do
+          echo "--- $f ---"
+          cat "$f"
+        done
+
+    - name: Re-sync projects to apply local manifest
+      run: |
+        cd ${GITHUB_WORKSPACE}/OrangeFox/fox_${{ inputs.MANIFEST_BRANCH }}
+        # The local_manifests/*.xml files were just copied AFTER the initial
+        # `repo sync` ran inside orangefox_sync_legacy.sh. We must re-sync
+        # for the <remove-project> and replacement <project> entries to
+        # take effect on disk (e.g. swapping TeamWin/android_vendor_twrp
+        # for hoshiyomiX/android_vendor_twrp).
+        #
+        # --force-sync ensures vendor/twrp gets re-cloned from the fork
+        # even if a checkout already exists from the initial sync.
+        # -c fetches the current manifest's revision (NOT default HEAD).
+        repo sync -c --force-sync -j$(nproc --all) vendor/twrp
+        echo "=== verify vendor/twrp is the fork ==="
+        cd vendor/twrp
+        git remote -v
+        git log --oneline -3
+        echo "--- BoardConfigTWRP.mk ---"
+        cat config/BoardConfigTWRP.mk
+
     - name: Clone Device Tree
       run: |
         cd ${GITHUB_WORKSPACE}/OrangeFox/fox_${{ inputs.MANIFEST_BRANCH }}
@@ -144,16 +178,9 @@ jobs:
     - name: Find Makefile
       run: |
         cd ${GITHUB_WORKSPACE}/OrangeFox/fox_${{ inputs.MANIFEST_BRANCH }}
-        if [ -f ${{ github.event.inputs.DEVICE_PATH }}/twrp_${{ github.event.inputs.DEVICE_NAME }}.mk ]; then
-          echo "DEVICE_MAKEFILE=twrp_${{ github.event.inputs.DEVICE_NAME }}" >> $GITHUB_ENV
-        elif [ -f ${{ github.event.inputs.DEVICE_PATH }}/omni_${{ github.event.inputs.DEVICE_NAME }}.mk ]; then
-          echo "DEVICE_MAKEFILE=omni_${{ github.event.inputs.DEVICE_NAME }}" >> $GITHUB_ENV
-        else
-          echo "DEVICE_MAKEFILE=twrp_${{ github.event.inputs.DEVICE_NAME }}" >> $GITHUB_ENV
-          echo "Warning: No specific makefile found, using default twrp_${{ github.event.inputs.DEVICE_NAME }}"
-        fi
+        echo "DEVICE_MAKEFILE=${{ github.event.inputs.MAKEFILE_NAME }}" >> $GITHUB_ENV
 
-    - name: Building OrangeFox Recovery Project 
+    - name: Building OrangeFox Recovery Project (Prebuilt)
       run: |
         cd ${GITHUB_WORKSPACE}/OrangeFox/fox_${{ inputs.MANIFEST_BRANCH }}        
         set +e
@@ -185,7 +212,7 @@ jobs:
             **Build:** fox_${{ inputs.MANIFEST_BRANCH }}
             **Device:** ${{ inputs.DEVICE_NAME }}
             **Maintainer:** @${{ github.actor }}
-            **Status:** mt6785-common
+            **Status:** prebuilt
             **Variant:** XOS
             **Commit:** `${{ github.sha }}`
 
