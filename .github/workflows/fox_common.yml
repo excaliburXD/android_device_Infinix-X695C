@@ -11,18 +11,18 @@ on:
         options:
         - 12.1
         - 11.0
+      DEVICE_NAME:
+        description: 'Device Codename'
+        required: true
+        default: 'X695C'
+      MAKEFILE_NAME:
+        description: 'Makefile Device Name'
+        required: true
+        default: 'twrp_X695C'
       DEVICE_TREE:
         description: 'Custom Recovery Tree URL'
         required: true
         default: 'https://github.com/excaliburXD/android_device_Infinix-X695C.git'
-      COMMON_TREE:
-        description: 'Common Device Tree URL'
-        required: true
-        default: 'https://github.com/excaliburXD/android_transsion_mt6785-common_twrp.git'
-      COMMON_TREE_BRANCH:
-        description: 'Common Device Tree Branch'
-        required: true
-        default: 'android-11.0'
       DEVICE_TREE_BRANCH:
         description: 'Device Tree Branch'
         required: true
@@ -31,6 +31,14 @@ on:
         description: 'Device Path'
         required: true
         default: 'device/infinix/Infinix-X695C'
+      COMMON_TREE:
+        description: 'Common Device Tree URL'
+        required: true
+        default: 'https://github.com/excaliburXD/android_transsion_mt6785-common_twrp.git'
+      COMMON_TREE_BRANCH:
+        description: 'Common Device Tree Branch'
+        required: true
+        default: 'android-11.0'
       BUILD_TARGET:
         description: 'Build Target'
         required: true
@@ -70,7 +78,8 @@ jobs:
     - name: Display Inputs
       run: |
         echo "Manifest Branch: ${{ github.event.inputs.MANIFEST_BRANCH }}"
-        echo "Device: ${{ github.event.inputs.DEVICE_NAME }}"
+        echo "Device Name: ${{ github.event.inputs.DEVICE_NAME }}"
+        echo "Makefile Name: ${{ github.event.inputs.MAKEFILE_NAME }}"
         echo "Build Target: ${{ github.event.inputs.BUILD_TARGET }}"
         echo "Build Type: ${{ github.event.inputs.BUILD_TYPE }}"
         echo "Device Tree: ${{ github.event.inputs.DEVICE_TREE }}"
@@ -119,7 +128,7 @@ jobs:
         sudo ln -sf ~/bin/repo /usr/bin/repo
 
     - name: Set-up Manifest
-      if: inputs.MANIFEST_BRANCH == '11.0' || inputs.MANIFEST_BRANCH == '12.1'
+      if: github.event.inputs.MANIFEST_BRANCH == '11.0' || github.event.inputs.MANIFEST_BRANCH == '12.1'
       run: |
         mkdir -p ${GITHUB_WORKSPACE}/OrangeFox
         cd ${GITHUB_WORKSPACE}/OrangeFox
@@ -127,11 +136,11 @@ jobs:
         git config --global user.email "${{ github.actor_id }}+${{ github.actor }}@users.noreply.github.com"
         git clone https://gitlab.com/OrangeFox/sync.git -b master
         cd sync/legacy
-        ./orangefox_sync_legacy.sh --branch ${{ inputs.MANIFEST_BRANCH }} --path ${GITHUB_WORKSPACE}/OrangeFox/fox_${{ inputs.MANIFEST_BRANCH }}
+        ./orangefox_sync_legacy.sh --branch ${{ github.event.inputs.MANIFEST_BRANCH }} --path ${GITHUB_WORKSPACE}/OrangeFox/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
 
     - name: Copy local manifest
       run: |
-        cd ${GITHUB_WORKSPACE}/OrangeFox/fox_${{ inputs.MANIFEST_BRANCH }}
+        cd ${GITHUB_WORKSPACE}/OrangeFox/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
         mkdir -p .repo/local_manifests
         cp ${{ github.workspace }}/.github/local_manifests/*.xml .repo/local_manifests/
         echo "=== local_manifests/ contents ==="
@@ -143,16 +152,7 @@ jobs:
 
     - name: Re-sync projects to apply local manifest
       run: |
-        cd ${GITHUB_WORKSPACE}/OrangeFox/fox_${{ inputs.MANIFEST_BRANCH }}
-        # The local_manifests/*.xml files were just copied AFTER the initial
-        # `repo sync` ran inside orangefox_sync_legacy.sh. We must re-sync
-        # for the <remove-project> and replacement <project> entries to
-        # take effect on disk (e.g. swapping TeamWin/android_vendor_twrp
-        # for hoshiyomiX/android_vendor_twrp).
-        #
-        # --force-sync ensures vendor/twrp gets re-cloned from the fork
-        # even if a checkout already exists from the initial sync.
-        # -c fetches the current manifest's revision (NOT default HEAD).
+        cd ${GITHUB_WORKSPACE}/OrangeFox/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
         repo sync -c --force-sync -j$(nproc --all) vendor/twrp
         echo "=== verify vendor/twrp is the fork ==="
         cd vendor/twrp
@@ -163,7 +163,7 @@ jobs:
 
     - name: Clone Device Tree
       run: |
-        cd ${GITHUB_WORKSPACE}/OrangeFox/fox_${{ inputs.MANIFEST_BRANCH }}
+        cd ${GITHUB_WORKSPACE}/OrangeFox/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
         TREE_URL="${{ github.event.inputs.DEVICE_TREE }}"
         TOKEN="${{ secrets.RECOVERY }}"
         if [ -n "$TOKEN" ]; then
@@ -175,14 +175,19 @@ jobs:
         cd ${{ github.event.inputs.DEVICE_PATH }}
         echo "COMMIT_ID=$(git rev-parse HEAD)" >> $GITHUB_ENV
 
+    - name: Clone Common Tree
+      run: |
+        cd ${GITHUB_WORKSPACE}/OrangeFox/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
+        git clone ${{ github.event.inputs.COMMON_TREE }} -b ${{ github.event.inputs.COMMON_TREE_BRANCH }} ./device/transsion/mt6785-common
+
     - name: Find Makefile
       run: |
-        cd ${GITHUB_WORKSPACE}/OrangeFox/fox_${{ inputs.MANIFEST_BRANCH }}
+        cd ${GITHUB_WORKSPACE}/OrangeFox/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
         echo "DEVICE_MAKEFILE=${{ github.event.inputs.MAKEFILE_NAME }}" >> $GITHUB_ENV
 
-    - name: Building OrangeFox Recovery Project (Prebuilt)
+    - name: Building OrangeFox Recovery Project
       run: |
-        cd ${GITHUB_WORKSPACE}/OrangeFox/fox_${{ inputs.MANIFEST_BRANCH }}        
+        cd ${GITHUB_WORKSPACE}/OrangeFox/fox_${{ github.event.inputs.MANIFEST_BRANCH }}        
         set +e
         source build/envsetup.sh
         export ALLOW_MISSING_DEPENDENCIES=true
@@ -191,36 +196,37 @@ jobs:
         set -e
         lunch ${{ github.event.inputs.MAKEFILE_NAME }}-${{ github.event.inputs.BUILD_TYPE }}
         make clean
-        mka adbd ${{ inputs.BUILD_TARGET }}image -j$(nproc --all)
+        mka adbd ${{ github.event.inputs.BUILD_TARGET }}image -j$(nproc --all)
 
     - name: Set Build Date
       run: |
         echo "BUILD_DATE=$(date +%Y%m%d-%H%M)" >> $GITHUB_ENV
-        cd ${GITHUB_WORKSPACE}/OrangeFox/fox_${{ inputs.MANIFEST_BRANCH }}
+        cd ${GITHUB_WORKSPACE}/OrangeFox/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
 
     - name: Upload to Release
       uses: softprops/action-gh-release@v2
       with:
         files: |
-          OrangeFox/fox_${{ inputs.MANIFEST_BRANCH }}/out/target/product/${{ inputs.DEVICE_NAME }}/OrangeFox*.img
-          OrangeFox/fox_${{ inputs.MANIFEST_BRANCH }}/out/target/product/${{ inputs.DEVICE_NAME }}/OrangeFox*.zip
-        name: Unofficial OrangeFox Recovery for ${{ inputs.DEVICE_NAME }} - ${{ env.BUILD_DATE }}
+          OrangeFox/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/out/target/product/${{ github.event.inputs.DEVICE_NAME }}/OrangeFox*.img
+          OrangeFox/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/out/target/product/${{ github.event.inputs.DEVICE_NAME }}/OrangeFox*.zip
+        name: Unofficial OrangeFox Recovery for ${{ github.event.inputs.DEVICE_NAME }} - ${{ env.BUILD_DATE }}
         tag_name: ${{ github.run_id }}
         body: |
             Firmware Version **RP1A.200720.011/221114V590**
             
-            **Build:** fox_${{ inputs.MANIFEST_BRANCH }}
-            **Device:** ${{ inputs.DEVICE_NAME }}
+            **Build:** fox_${{ github.event.inputs.MANIFEST_BRANCH }}
+            **Device:** ${{ github.event.inputs.DEVICE_NAME }}
             **Maintainer:** @${{ github.actor }}
-            **Status:** prebuilt
+            **Status:** mt6785-common
             **Variant:** XOS
             **Commit:** `${{ github.sha }}`
 
     - name: Cleanup after build
       run: |
         echo "Cleaning up..."
-        rm -rf ${GITHUB_WORKSPACE}/OrangeFox/fox_${{ inputs.MANIFEST_BRANCH }}/.repo
+        rm -rf ${GITHUB_WORKSPACE}/OrangeFox/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/.repo
         rm -rf ~/.ccache
-        rm -rf ${GITHUB_WORKSPACE}/OrangeFox/fox_${{ inputs.MANIFEST_BRANCH }}/out
+        rm -rf ${GITHUB_WORKSPACE}/OrangeFox/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/out
         sudo apt clean
         echo "Cleanup complete."
+        
