@@ -1,4 +1,4 @@
-name: Recovery Builder - Infinix-X695C - mt6785-common
+name: Recovery Builder - OFRP mt6785-common 
 
 on:
   workflow_dispatch:
@@ -11,14 +11,6 @@ on:
         options:
         - 12.1
         - 11.0
-      DEVICE_NAME:
-        description: 'Device Codename'
-        required: true
-        default: 'X695C'
-      MAKEFILE_NAME:
-        description: 'Makefile Device Name'
-        required: true
-        default: 'twrp_X695C'
       DEVICE_TREE:
         description: 'Custom Recovery Tree URL'
         required: true
@@ -28,17 +20,17 @@ on:
         required: true
         default: 'fox_11.1'
       DEVICE_PATH:
-        description: 'Device Path'
+        description: 'Device Path (e.g., device/xiaomi/sweet)'
         required: true
         default: 'device/infinix/Infinix-X695C'
-      COMMON_TREE:
-        description: 'Common Device Tree URL'
+      DEVICE_NAME:
+        description: 'Device Codename'
         required: true
-        default: 'https://github.com/excaliburXD/android_transsion_mt6785-common_twrp.git'
-      COMMON_TREE_BRANCH:
-        description: 'Common Device Tree Branch'
+        default: 'Infinix-X695C'
+      MAKEFILE_NAME:
+        description: 'MAKEFILE_NAME'
         required: true
-        default: 'android-11.0'
+        default: 'twrp_X695C'
       BUILD_TARGET:
         description: 'Build Target'
         required: true
@@ -78,13 +70,10 @@ jobs:
     - name: Display Inputs
       run: |
         echo "Manifest Branch: ${{ github.event.inputs.MANIFEST_BRANCH }}"
-        echo "Device Name: ${{ github.event.inputs.DEVICE_NAME }}"
-        echo "Makefile Name: ${{ github.event.inputs.MAKEFILE_NAME }}"
+        echo "Device: ${{ github.event.inputs.DEVICE_NAME }}"
         echo "Build Target: ${{ github.event.inputs.BUILD_TARGET }}"
         echo "Build Type: ${{ github.event.inputs.BUILD_TYPE }}"
         echo "Device Tree: ${{ github.event.inputs.DEVICE_TREE }}"
-        echo "Common Tree: ${{ github.event.inputs.COMMON_TREE }}"
-        echo "Common Tree Branch: ${{ github.event.inputs.COMMON_TREE_BRANCH }}"
         echo "Device Tree Branch: ${{ github.event.inputs.DEVICE_TREE_BRANCH }}"
         echo "Device Path: ${{ github.event.inputs.DEVICE_PATH }}"
         echo "LDCHECK: ${{ github.event.inputs.LDCHECK }}"
@@ -128,7 +117,7 @@ jobs:
         sudo ln -sf ~/bin/repo /usr/bin/repo
 
     - name: Set-up Manifest
-      if: github.event.inputs.MANIFEST_BRANCH == '11.0' || github.event.inputs.MANIFEST_BRANCH == '12.1'
+      if: inputs.MANIFEST_BRANCH == '11.0' || inputs.MANIFEST_BRANCH == '12.1'
       run: |
         mkdir -p ${GITHUB_WORKSPACE}/OrangeFox
         cd ${GITHUB_WORKSPACE}/OrangeFox
@@ -136,7 +125,7 @@ jobs:
         git config --global user.email "${{ github.actor_id }}+${{ github.actor }}@users.noreply.github.com"
         git clone https://gitlab.com/OrangeFox/sync.git -b master
         cd sync/legacy
-        ./orangefox_sync_legacy.sh --branch ${{ github.event.inputs.MANIFEST_BRANCH }} --path ${GITHUB_WORKSPACE}/OrangeFox/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
+        ./orangefox_sync_legacy.sh --branch ${{ inputs.MANIFEST_BRANCH }} --path ${GITHUB_WORKSPACE}/OrangeFox/fox_${{ inputs.MANIFEST_BRANCH }}
 
     - name: Copy local manifest
       run: |
@@ -160,10 +149,10 @@ jobs:
         git log --oneline -3
         echo "--- BoardConfigTWRP.mk ---"
         cat config/BoardConfigTWRP.mk
-
+        
     - name: Clone Device Tree
       run: |
-        cd ${GITHUB_WORKSPACE}/OrangeFox/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
+        cd ${GITHUB_WORKSPACE}/OrangeFox/fox_${{ inputs.MANIFEST_BRANCH }}
         TREE_URL="${{ github.event.inputs.DEVICE_TREE }}"
         TOKEN="${{ secrets.RECOVERY }}"
         if [ -n "$TOKEN" ]; then
@@ -175,19 +164,21 @@ jobs:
         cd ${{ github.event.inputs.DEVICE_PATH }}
         echo "COMMIT_ID=$(git rev-parse HEAD)" >> $GITHUB_ENV
 
-    - name: Clone Common Tree
-      run: |
-        cd ${GITHUB_WORKSPACE}/OrangeFox/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
-        git clone ${{ github.event.inputs.COMMON_TREE }} -b ${{ github.event.inputs.COMMON_TREE_BRANCH }} ./device/transsion/mt6785-common
-
     - name: Find Makefile
       run: |
-        cd ${GITHUB_WORKSPACE}/OrangeFox/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
-        echo "DEVICE_MAKEFILE=${{ github.event.inputs.MAKEFILE_NAME }}" >> $GITHUB_ENV
+        cd ${GITHUB_WORKSPACE}/OrangeFox/fox_${{ inputs.MANIFEST_BRANCH }}
+        if [ -f ${{ github.event.inputs.DEVICE_PATH }}/twrp_${{ github.event.inputs.DEVICE_NAME }}.mk ]; then
+          echo "DEVICE_MAKEFILE=twrp_${{ github.event.inputs.DEVICE_NAME }}" >> $GITHUB_ENV
+        elif [ -f ${{ github.event.inputs.DEVICE_PATH }}/omni_${{ github.event.inputs.DEVICE_NAME }}.mk ]; then
+          echo "DEVICE_MAKEFILE=omni_${{ github.event.inputs.DEVICE_NAME }}" >> $GITHUB_ENV
+        else
+          echo "DEVICE_MAKEFILE=twrp_${{ github.event.inputs.DEVICE_NAME }}" >> $GITHUB_ENV
+          echo "Warning: No specific makefile found, using default twrp_${{ github.event.inputs.DEVICE_NAME }}"
+        fi
 
-    - name: Building OrangeFox Recovery Project
+    - name: Building OrangeFox Recovery Project 
       run: |
-        cd ${GITHUB_WORKSPACE}/OrangeFox/fox_${{ github.event.inputs.MANIFEST_BRANCH }}        
+        cd ${GITHUB_WORKSPACE}/OrangeFox/fox_${{ inputs.MANIFEST_BRANCH }}        
         set +e
         source build/envsetup.sh
         export ALLOW_MISSING_DEPENDENCIES=true
@@ -196,37 +187,36 @@ jobs:
         set -e
         lunch ${{ github.event.inputs.MAKEFILE_NAME }}-${{ github.event.inputs.BUILD_TYPE }}
         make clean
-        mka adbd ${{ github.event.inputs.BUILD_TARGET }}image -j$(nproc --all)
+        mka adbd ${{ inputs.BUILD_TARGET }}image -j$(nproc --all)
 
     - name: Set Build Date
       run: |
         echo "BUILD_DATE=$(date +%Y%m%d-%H%M)" >> $GITHUB_ENV
-        cd ${GITHUB_WORKSPACE}/OrangeFox/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
+        cd ${GITHUB_WORKSPACE}/OrangeFox/fox_${{ inputs.MANIFEST_BRANCH }}
 
     - name: Upload to Release
       uses: softprops/action-gh-release@v2
       with:
         files: |
-          OrangeFox/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/out/target/product/*/*.img
-          OrangeFox/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/out/target/product/*/*.zip
-        name: Unofficial OrangeFox Recovery for ${{ github.event.inputs.DEVICE_NAME }} - ${{ env.BUILD_DATE }}
+          OrangeFox/fox_${{ inputs.MANIFEST_BRANCH }}/out/target/product/${{ inputs.DEVICE_NAME }}/OrangeFox*.img
+          OrangeFox/fox_${{ inputs.MANIFEST_BRANCH }}/out/target/product/${{ inputs.DEVICE_NAME }}/OrangeFox*.zip
+        name: Unofficial OrangeFox Recovery for ${{ inputs.DEVICE_NAME }} - ${{ env.BUILD_DATE }}
         tag_name: ${{ github.run_id }}
         body: |
             Firmware Version **RP1A.200720.011/221114V590**
             
-            **Build:** fox_${{ github.event.inputs.MANIFEST_BRANCH }}
-            **Device:** ${{ github.event.inputs.DEVICE_NAME }}
+            **Build:** fox_${{ inputs.MANIFEST_BRANCH }}
+            **Device:** ${{ inputs.DEVICE_NAME }}
             **Maintainer:** @${{ github.actor }}
             **Status:** mt6785-common
-            **Variant:** XOS
+            **Variant:** XOS-Stabil
             **Commit:** `${{ github.sha }}`
 
     - name: Cleanup after build
       run: |
         echo "Cleaning up..."
-        rm -rf ${GITHUB_WORKSPACE}/OrangeFox/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/.repo
+        rm -rf ${GITHUB_WORKSPACE}/OrangeFox/fox_${{ inputs.MANIFEST_BRANCH }}/.repo
         rm -rf ~/.ccache
-        rm -rf ${GITHUB_WORKSPACE}/OrangeFox/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/out
+        rm -rf ${GITHUB_WORKSPACE}/OrangeFox/fox_${{ inputs.MANIFEST_BRANCH }}/out
         sudo apt clean
         echo "Cleanup complete."
-        
