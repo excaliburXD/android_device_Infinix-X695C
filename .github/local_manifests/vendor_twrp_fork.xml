@@ -19,7 +19,7 @@
     (header v0/v2).
   -->
   <remove-project name="android_vendor_twrp" />
-  <project name="hoshiyomiX/android_vendor_twrp"
+  <project name="excaliburXD/android_vendor_twrp"
            path="vendor/twrp"
            remote="github"
            revision="android-11" />
