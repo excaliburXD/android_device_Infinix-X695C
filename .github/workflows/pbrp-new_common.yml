@@ -69,7 +69,7 @@ jobs:
         
     - name: Copy local manifest
       run: |
-        cd ${GITHUB_WORKSPACE}/OrangeFox/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
+        cd ${GITHUB_WORKSPACE}/Teamwin/pb_${{ github.event.inputs.MANIFEST_BRANCH }}
         mkdir -p .repo/local_manifests
         cp ${{ github.workspace }}/.github/local_manifests/*.xml .repo/local_manifests/
         echo "=== local_manifests/ contents ==="
@@ -81,7 +81,7 @@ jobs:
 
     - name: Re-sync projects to apply local manifest
       run: |
-        cd ${GITHUB_WORKSPACE}/OrangeFox/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
+        cd ${GITHUB_WORKSPACE}/Teamwin/pb_${{ github.event.inputs.MANIFEST_BRANCH }}
         repo sync -c --force-sync -j$(nproc --all) vendor/twrp
         echo "=== verify vendor/twrp is the fork ==="
         cd vendor/twrp
