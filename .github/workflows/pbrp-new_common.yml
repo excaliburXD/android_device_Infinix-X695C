@@ -1,4 +1,4 @@
-name: Recovery Builder - PBRP-NEW mt6785-common
+name: Recovery Builder - PBRP-new mt6785-common
 
 on:
   workflow_dispatch:
@@ -6,50 +6,39 @@ on:
       MANIFEST_BRANCH:
         description: 'PBRP Manifest Branch'
         required: true
-        default: 'android-11.0'
+        default: 'android-12.1'
         type: choice
         options:
         - android-14.0
         - android-12.1
         - android-11.0
+        - android-10.0
+        - android-9.0
+        - android-8.1
+        - android-7.1
+        - android-6.0
       DEVICE_TREE:
-        description: 'Custom Recovery Tree' # Your already made Device Tree for TWRP
+        description: 'Custom Recovery Tree URL'
         required: true
         default: 'https://github.com/excaliburXD/android_device_Infinix-X695C.git'
       DEVICE_TREE_BRANCH:
-        description: 'Your Custom Recovery Tree Branch' # Your Device Tree Branch, make sure it's right.
+        description: 'Device Tree Branch (optional)'
         required: true
         default: 'pbrp_11.0'
-      DEVICE_NAME:
-        description: 'Specify your Device Codename' # As is, just like your PRODUCT_DEVICE in your device tree.
-        required: true
-        default: 'Infinix-X695C'
-      DEVICE_PATH:
-        description: 'Specify your Device Path (Check the DEVICE_PATH in BoardConfig.mk)' # As is, just like your DEVICE_PATH in your BoardConfig.mk
-        required: true
-        default: 'device/infinix/Infinix-X695C'
-      MAKEFILE_NAME:
-        description: 'MAKEFILE_NAME'
-        required: true
-        default: 'pb_X695C'
       BUILD_TARGET:
-        description: 'Specify your Build Target (choose "pbrp" instead of "recovery" for Android 11 or above)' # Pick among boot, recovery and vendor_boot
+        description: 'Build Target (use "pbrp" for Android 11+)'
         required: true
-        default: 'pbrp'
+        default: 'recovery'
         type: choice
         options:
         - pbrp
+        - recovery
         - boot
         - vendorboot
-      LDCHECK:
-        description: 'Use LDCHECK'
+      LDCHECK_PATH:
+        description: 'Path for dependency check (optional)'
         required: false
-        default: 'false'
-        type: boolean
-      LDCHECKPATH:
-        description: 'Path of blobs to check' # Use it know what kind of dependencies your missing for decryption blobs.
-        required: true
-        default: 'system/bin/qseecomd'
+        default: 'recovery/root/system/bin/qseecomd'
 
 jobs:
   build:
@@ -57,188 +46,128 @@ jobs:
     runs-on: ubuntu-22.04
     if: github.event.repository.owner.id == github.event.sender.id
     env:
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      OUTPUT_DIR: ${{ github.workspace }}/android-recovery/out/target/product/${{ inputs.DEVICE_NAME }}
+      DEBIAN_FRONTEND: noninteractive
     permissions:
       contents: write
+      
     steps:
-    - name: Check Out
+    - name: Initial Setup
+      run: |
+        echo "BUILD_START=$(date +%s)" >> $GITHUB_ENV
+        echo "BUILD_DATE=$(TZ=UTC date +%Y%m%d)" >> $GITHUB_ENV
+        
+    - name: Checkout
       uses: actions/checkout@v6
 
-    - name: Cleanup
+    - name: Clean-up
       uses: rokibhasansagar/slimhub_actions@main
-      
-    - name: Set Swap Space
+
+    - name: Swap Space   # Easier
       uses: pierotofy/set-swap-space@master
       with:
         swap-size-gb: 24
-
-    - name: Check Manifest Branch
+        
+    - name: Copy local manifest
       run: |
-        if [ ${{ inputs.MANIFEST_BRANCH }} == 'android-11.0' ] || [ ${{ inputs.MANIFEST_BRANCH }} == 'android-12.1' ]; then
-            echo "CHECK_LEGACY_BRANCH=false" >> $GITHUB_ENV
-        else
-            echo "CHECK_LEGACY_BRANCH=true" >> $GITHUB_ENV
-        fi
-
-    - name: Prepare the environment
-      run: |
-        sudo add-apt-repository universe
-        sudo apt update
-        sudo apt -y upgrade
-        sudo apt -y install gperf gcc-multilib gcc-10-multilib g++-multilib g++-10-multilib libc6-dev lib32ncurses5-dev x11proto-core-dev libx11-dev tree lib32z-dev libgl1-mesa-dev libxml2-utils xsltproc bc ccache lib32readline-dev lib32z1-dev liblz4-tool libncurses5-dev libsdl1.2-dev libwxgtk3.0-gtk3-dev libxml2 lzop pngcrush schedtool squashfs-tools imagemagick libbz2-dev lzma ncftp qemu-user-static libstdc++-10-dev libtinfo5 libgflags-dev libncurses5 python3
-
-    - name: Install OpenJDK
-      uses: actions/setup-java@v5
-      with:
-        distribution: 'zulu'
-        java-version: '8'
-
-    - name: Install Git-Repo
-      run: |
-        mkdir ~/bin
-        curl https://storage.googleapis.com/git-repo-downloads/repo > ~/bin/repo
-        chmod a+x ~/bin/repo
-        sudo ln -sf ~/bin/repo /usr/bin/repo
-
-    - name: Initialize Repo
-      run: |
-        mkdir android-recovery
-        pushd android-recovery
-        git config --global user.name "${{ github.actor }}"
-        git config --global user.email "${{ github.actor_id }}+${{ github.actor }}@users.noreply.github.com"
-        repo init --depth=1 -u https://github.com/mlm-games/manifest_pb.git -b ${{ inputs.MANIFEST_BRANCH }}
-        popd
-
-    - name: Repo Sync
-      run: |
-        pushd android-recovery
-        repo sync -j$(nproc --all) --force-sync
-        popd
-      
-    - name: Clone Device Tree
-      run: |
-        pushd android-recovery
-        git clone ${{ inputs.DEVICE_TREE }} -b ${{ inputs.DEVICE_TREE_BRANCH }} ./${{ inputs.DEVICE_PATH }}
-        cd ${{ inputs.DEVICE_PATH }}
-        echo "COMMIT_ID=$(git rev-parse HEAD)" >> $GITHUB_ENV
-        popd
-
-    # =====================================================================
-    # [FIX] Strip twrpfastboot=1 from TWRP BoardConfig at build time
-    # =====================================================================
-    # PBRP inherits TWRP's vendor/twrp/BoardConfigTWRP.mk which appends
-    # `twrpfastboot=1` to GENERIC_KERNEL_CMDLINE. This flag forces the
-    # recovery-variant init binary to always enter recovery mode,
-    # skipping first_stage_mount even when force_normal_boot=1 is set.
-    # The sed is idempotent — no-op if pattern doesn't match.
-    # =====================================================================
-    - name: Patch TWRP BoardConfig (strip twrpfastboot=1)
-      run: |
-        pushd android-recovery
-        echo "Searching for vendor/twrp/BoardConfigTWRP.mk files..."
-        find . -path '*/vendor/twrp/*BoardConfigTWRP*.mk' -type f | while read -r f; do
-          echo "  Found: $f"
-          if grep -q 'twrpfastboot=1' "$f"; then
-            echo "    → Contains twrpfastboot=1, patching..."
-            sed -i -E "s/[[:space:]]+twrpfastboot=1//g; s/twrpfastboot=1[[:space:]]+//g; s/twrpfastboot=1//g" "$f"
-            echo "    → Patched. Remaining twrpfastboot occurrences: $(grep -c twrpfastboot "$f" || true)"
-          else
-            echo "    → Does not contain twrpfastboot=1, skipping"
-          fi
+        cd ${GITHUB_WORKSPACE}/OrangeFox/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
+        mkdir -p .repo/local_manifests
+        cp ${{ github.workspace }}/.github/local_manifests/*.xml .repo/local_manifests/
+        echo "=== local_manifests/ contents ==="
+        ls -la .repo/local_manifests/
+        for f in .repo/local_manifests/*.xml; do
+          echo "--- $f ---"
+          cat "$f"
         done
-        echo "Patch step complete."
-        popd
 
-    - name: Check Build Makefile
+    - name: Re-sync projects to apply local manifest
       run: |
-        pushd android-recovery
-        if [ -f ${{ inputs.DEVICE_PATH }}/twrp_${{ inputs.DEVICE_NAME}}.mk ]; then
-            echo "DEVICE_MAKEFILE=twrp_${{ inputs.DEVICE_NAME }}" >> $GITHUB_ENV
-        elif [ -f ${{ inputs.DEVICE_PATH }}/omni_${{ inputs.DEVICE_NAME}}.mk ]; then
-            echo "DEVICE_MAKEFILE=omni_${{ inputs.DEVICE_NAME }}" >> $GITHUB_ENV
-        elif [ -f ${{ inputs.DEVICE_PATH }}/pb_${{ inputs.DEVICE_NAME}}.mk ]; then
-            echo "DEVICE_MAKEFILE=pb_${{ inputs.DEVICE_NAME }}" >> $GITHUB_ENV
-        else
-            echo "No recovery makefile file found!"
-        fi
-        popd
-      continue-on-error: true
-      
-    - name: Installing python2 for legacy builds
-      if: env.CHECK_LEGACY_BRANCH == 'true'
-      run: |
-        sudo apt-get install python2 python-is-python2
-
-    - name: Fixed Missing Fonts
-      run: |
-        cd android-recovery
-        mkdir external/noto-fonts/other && cd external/noto-fonts/other
-        wget https://github.com/cd-Crypton/custom-recovery-extras/raw/main/missing-font.zip
-        unzip -o missing-font.zip
-
-    - name: Building PitchBlack
-      run: |
-        pushd android-recovery
-        source build/envsetup.sh
-        export ALLOW_MISSING_DEPENDENCIES=true
-        if [ "${{ inputs.BUILD_TARGET }}" != "pbrp" ]; then
-            lunch ${{ env.DEVICE_MAKEFILE }}-eng && mka ${{ inputs.BUILD_TARGET }}image
-        else
-            lunch ${{ env.DEVICE_MAKEFILE }}-eng && mka ${{ inputs.BUILD_TARGET }}
-        fi
-        popd
-
-    - name: Set Build Date # Needed for gh-releases
-      run: |
-        echo "BUILD_DATE=$(TZ=UTC date +%Y%m%d)" >> $GITHUB_ENV
-
-   
-    - name: Check if the recovery exists
-      if: always()
-      run: |
-        img_file=$(find "${{ env.OUTPUT_DIR }}" -name "*.img" -print -quit)
-        zip_file=$(find "${{ env.OUTPUT_DIR }}" -name "PBRP*.zip" -print -quit)
-        if [ -f "$img_file" ]; then
-            echo "CHECK_IMG_IS_OK=true" >> $GITHUB_ENV
-            echo "MD5_IMG=$(md5sum "$img_file" | cut -d ' ' -f 1)" >> $GITHUB_ENV
-        else
-            echo "Recovery out directory is empty."
-        fi
-        if [ -f "$zip_file" ]; then
-            echo "CHECK_ZIP_IS_OK=true" >> $GITHUB_ENV
-            echo "MD5_ZIP=$(md5sum "$zip_file" | cut -d ' ' -f 1)" >> $GITHUB_ENV
-        else
-            echo "::warning::The zip file isn't present but make sure the image is from only after 100% completion in build stage"
-        fi
+        cd ${GITHUB_WORKSPACE}/OrangeFox/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
+        repo sync -c --force-sync -j$(nproc --all) vendor/twrp
+        echo "=== verify vendor/twrp is the fork ==="
+        cd vendor/twrp
+        git remote -v
+        git log --oneline -3
+        echo "--- BoardConfigTWRP.mk ---"
+        echo "--- BoardConfigSoong.mk ---"
+        cat config/BoardConfigTWRP.mk
+        cat config/BoardConfigSoong.mk
+        
+    - name: Build PitchBlack Recovery
+      uses: mlm-games/pitchblack-pbrp-builder-action@main
+      id: build
+      with:
+        MANIFEST_BRANCH: ${{ inputs.MANIFEST_BRANCH }}
+        DEVICE_TREE:  ${{ inputs.DEVICE_TREE }}
+        DEVICE_TREE_BRANCH:  ${{ inputs.DEVICE_TREE_BRANCH }}
+        BUILD_TARGET:  ${{ inputs.BUILD_TARGET }}
+  
+    - name: Upload Artifacts
+      uses: actions/upload-artifact@v7
+      if: inputs.upload_releases == false || github.event_name != 'workflow_dispatch'
+      with:
+        name: PBRP-Recovery-${{ env.DEVICE_NAME }}-${{ env.BUILD_DATE }}
+        path: |
+          ${{ env.OUTPUT_DIR }}/*.img
+          ${{ env.OUTPUT_DIR }}/*.tar
+          ${{ env.OUTPUT_DIR }}/*vbmeta*
+          ${{ env.OUTPUT_DIR }}/*.cpio
 
     - name: Upload to Release
-      if: always() && (env.CHECK_IMG_IS_OK == 'true' || env.CHECK_ZIP_IS_OK == 'true')
-      uses: softprops/action-gh-release@master
+      if: success()
+      uses: softprops/action-gh-release@v3
       with:
         files: |
-          if [ "${{ inputs.BUILD_TARGET }}" != "pbrp" ]; then
-            ${{ env.OUTPUT_DIR }}/${{ inputs.BUILD_TARGET }}*.img
-          else
-            ${{ env.OUTPUT_DIR }}/recovery*.img
-          fi
+          ${{ env.OUTPUT_DIR }}/*.img
           ${{ env.OUTPUT_DIR }}/PBRP*.zip
-          ${{ env.OUTPUT_DIR }}/ramdisk-recovery.*
-        name: Unofficial PBRP for ${{ inputs.DEVICE_NAME }} // ${{ env.BUILD_DATE }}
+        name: PBRP for ${{ inputs.DEVICE_NAME }} - ${{ env.BUILD_DATE }}
         tag_name: ${{ github.run_id }}
         body: |
-          Build: ${{ inputs.MANIFEST_BRANCH }}
-          Device: [Device Tree/Branch](${{ inputs.DEVICE_TREE }}/tree/${{ inputs.DEVICE_TREE_BRANCH }})
-          Commit: Most recent [commit](${{ inputs.DEVICE_TREE }}/commit/${{ env.COMMIT_ID }}) during building.
-        prerelease: true
+          ## Build Information
+          - **Build Date:** ${{ env.BUILD_DATE }}
+          - **Branch:** ${{ inputs.MANIFEST_BRANCH }}
+          - **Device:** ${{ inputs.DEVICE_NAME }}
+          - **Build Type:** ${{ inputs.BUILD_TARGET }}
+          
+          ## Source Information
+          - **Device Tree:** [${{ inputs.DEVICE_TREE }}](${{ inputs.DEVICE_TREE }}/tree/${{ inputs.DEVICE_TREE_BRANCH }})
+          - **Branch:** ${{ inputs.DEVICE_TREE_BRANCH }}
+          
+          ## Build Status
+          - Recovery Image MD5: `${{ env.MD5_IMG }}`
+          - ZIP Package MD5: `${{ env.MD5_ZIP }}`
+          
+          > Note: This is an automated build. Please test thoroughly before using.
+        prerelease: false
+        draft: false
 
-    - name: Run LDCheck
-      if: inputs.LDCHECK == 'true'
-      run: |
-        cd tools
-        mv -n libneeds ${{ env.OUTPUT_DIR }}/${{ inputs.DEVICE_NAME }}/recovery/root/
-        mv -n ldcheck ${{ env.OUTPUT_DIR }}/${{ inputs.DEVICE_NAME }}/recovery/root/
-        cd ${{ env.OUTPUT_DIR }}/${{ inputs.DEVICE_NAME }}/recovery/root
-        python3 ldcheck -p system/lib64:vendor/lib64:system/lib:vendor/lib -d ${{ inputs.LDCHECKPATH }}
-        echo "Done checking missing dependencies. Review, and reconfigure your tree."
+    - name: Run LDCHECK
+      uses: mlm-games/ldcheck-action@main
+      with:
+        OUTPUT_DIR: ${{ env.OUTPUT_DIR }}
+        LDCHECKPATH: ${{ inputs.LDCHECK_PATH }}
       continue-on-error: true
+
+    - name: Calculate Build Time
+      if: always()
+      run: |
+        BUILD_END=$(date +%s)
+        BUILD_DURATION=$((BUILD_END - BUILD_START))
+        
+        hours=$((BUILD_DURATION / 3600))
+        minutes=$(((BUILD_DURATION % 3600) / 60))
+        seconds=$((BUILD_DURATION % 60))
+        
+        echo "Build completed in ${hours}h ${minutes}m ${seconds}s"
+        
+        # Save build statistics
+        echo "BUILD_DURATION=${BUILD_DURATION}" >> $GITHUB_ENV
+        echo "BUILD_HOURS=${hours}" >> $GITHUB_ENV
+        echo "BUILD_MINUTES=${minutes}" >> $GITHUB_ENV
+        echo "BUILD_SECONDS=${seconds}" >> $GITHUB_ENV
+
+    - name: Cleanup Workspace
+      if: always()
+      run: |
+        cd ${{ github.workspace }}
+        rm -rf android-recovery
+        df -h
