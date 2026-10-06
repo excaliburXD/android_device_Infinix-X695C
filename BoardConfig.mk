@@ -17,8 +17,5 @@ TARGET_OTA_ASSERT_DEVICE := X695C,Infinix-X695C
 TARGET_INIT_VENDOR_LIB := libinit_Infinix-X695C
 TARGET_RECOVERY_DEVICE_MODULES := libinit_Infinix-X695C
 
-# Optimize Build
-TW_EXCLUDE_BASH := true
-TW_EXCLUDE_NANO := true
-TW_EXCLUDE_PYTHON := true
-TW_EXCLUDE_TWRPAPP := true
+# Maintainer
+TW_DEVICE_VERSION := Infinix Note 10 Pro | ExcaliburXD
