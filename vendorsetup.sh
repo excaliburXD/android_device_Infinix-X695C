@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # clone common device tree
-git clone https://github.com/excaliburXD/android_transsion_mt6785-common_twrp.git -b android-11.0 device/transsion/mt6785-common
+git clone https://github.com/excaliburXD/android_transsion_mt6785-common_twrp.git -b android-11.0-old device/transsion/mt6785-common
 
 # Partitions Recovery
 export FOX_RECOVERY_BOOT_PARTITION="/dev/block/platform/bootdevice/by-name/boot"
@@ -26,7 +26,7 @@ export FOX_USE_XZ_UTILS=1
 
 # Build Metadata
 export FOX_BUILD_TYPE="mt6785-common"
-export FOX_VERSION="R11.1"
+export FOX_VERSION="R11.1-old"
 export FOX_VARIANT="XOS"
 export OF_MAINTAINER="excaliburXD"
 
@@ -46,7 +46,6 @@ export OF_DISABLE_FORCED_ENCRYPTION=1
 export OF_DISABLE_DM_VERITY_FORCED_ENCRYPTION=1
 export OF_USE_MAGISKBOOT=1
 export OF_USE_MAGISKBOOT_FOR_ALL_PATCHES=1
-#export OF_SKIP_FBE_DECRYPTION_SDKVERSION=36
 export OF_DONT_PATCH_ENCRYPTED_DEVICE=true
 export OF_FIX_DECRYPTION_ON_DATA_MEDIA=1
 
