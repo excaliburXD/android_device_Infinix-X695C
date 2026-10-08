@@ -17,5 +17,8 @@ TARGET_OTA_ASSERT_DEVICE := X695C,Infinix-X695C
 TARGET_INIT_VENDOR_LIB := libinit_Infinix-X695C
 TARGET_RECOVERY_DEVICE_MODULES := libinit_Infinix-X695C
 
-# Maintainer
+# TWRP Configuration
+TW_THEME := portrait_hdpi
+TARGET_SCREEN_WIDTH := 1080
+TARGET_SCREEN_HEIGHT := 2460
 TW_DEVICE_VERSION := Infinix Note 10 Pro | ExcaliburXD
