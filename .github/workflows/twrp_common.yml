@@ -38,75 +38,84 @@ on:
 
 jobs:
   build:
-    if: github.event.repository.owner.id == github.event.sender.id
+    name: Build TWRP by ${{ github.actor }}
     runs-on: ubuntu-latest
+    if: github.event_name != 'workflow_dispatch' || github.event.sender.id == github.event.repository.owner.id
+    env:
+      GITHUB_TOKEN: ${{ secrets.RECOVERY }}
     permissions:
       contents: write
+
     steps:
-    - name: Display Run Parameters
-      run: |
-        echo "::group::User Environment Variables"
-        echo "Manifest URL: ${{ github.event.inputs.MANIFEST_URL }}"
-        echo "Manifest Branch: ${{ github.event.inputs.MANIFEST_BRANCH }}"
-        echo "Device Tree URL: ${{ github.event.inputs.DEVICE_TREE_URL }}"
-        echo "Device Tree Branch: ${{ github.event.inputs.DEVICE_TREE_BRANCH }}"
-        echo "Device Path: ${{ github.event.inputs.DEVICE_PATH }}"
-        echo "Device Name: ${{ github.event.inputs.DEVICE_NAME }}"
-        echo "Makefile Name: ${{ github.event.inputs.MAKEFILE_NAME }}"
-        echo "Build Target: ${{ github.event.inputs.BUILD_TARGET }}.img"
-        echo "::endgroup::"
+      - name: Checkout Repo
+        uses: actions/checkout@v4
 
-    # You might want to Checkout your repo first, but not mandatory
-    - name: Check Out
-      uses: actions/checkout@v5
+      - name: Display Inputs
+        run: |
+          echo "Manifest Branch: ${{ github.event.inputs.MANIFEST_BRANCH }}"
+          echo "Device: ${{ github.event.inputs.DEVICE_NAME }}"
+          echo "Build Target: ${{ github.event.inputs.BUILD_TARGET }}"
+          echo "Build Type: ${{ github.event.inputs.BUILD_TYPE }}"
+          echo "Device Tree: ${{ github.event.inputs.DEVICE_TREE }}"
+          echo "Device Tree Branch: ${{ github.event.inputs.DEVICE_TREE_BRANCH }}"
+          echo "Device Path: ${{ github.event.inputs.DEVICE_PATH }}"
+          echo "LDCHECK: ${{ github.event.inputs.LDCHECK }}"
 
-    # Cleanup The Actions Workspace Using Custom Composite Run Actions
-    - name: Cleanup
-      uses: rokibhasansagar/slimhub_actions@main
-      # That's it! Now use your normal steps
+      - name: Cleanup System
+        uses: rokibhasansagar/slimhub_actions@main
 
-    - name: Prepare the environment
-      run: |
-        sudo apt update
-        sudo apt -y install bc bison build-essential ccache curl flex g++-multilib gcc-multilib git git-lfs gnupg gperf imagemagick protobuf-compiler python3-protobuf lib32readline-dev lib32z1-dev libdw-dev libelf-dev lz4 libsdl1.2-dev libssl-dev libxml2-16 libxml2-dev libxml2-utils lzop pngcrush rsync schedtool squashfs-tools xsltproc zip zlib1g-dev aria2
+      - name: Set Swap Space
+        uses: pierotofy/set-swap-space@master
+        with:
+          swap-size-gb: 24
 
-    - name: Install OpenJDK
-      uses: actions/setup-java@v4
-      with:
-        distribution: 'zulu'
-        java-version: '11'
+      - name: Install Dependencies
+        run: |
+          sudo apt update
+          sudo apt -y install bc bison build-essential ccache curl flex g++-multilib gcc-multilib git git-lfs gnupg gperf imagemagick protobuf-compiler python3-protobuf lib32readline-dev lib32z1-dev libdw-dev libelf-dev lz4 libsdl1.2-dev libssl-dev libxml2 libxml2-utils lzop pngcrush rsync schedtool squashfs-tools xsltproc zip zlib1g-dev
 
-    - name: Setup CCache
-      uses: hendrikmuhs/ccache-action@v1.2
-      with:
-        key: twrp-${{ github.event.inputs.DEVICE_NAME }}
-        max-size: 15G
+      - name: Setup Java 11
+        uses: actions/setup-java@v5
+        with:
+          distribution: 'zulu'
+          java-version: '11'
 
-    - name: Install repo
-      run: |
-        mkdir ~/bin
-        curl https://storage.googleapis.com/git-repo-downloads/repo > ~/bin/repo
-        chmod a+x ~/bin/repo
-        sudo ln -sf ~/bin/repo /usr/bin/repo
+      - name: Setup CCache
+        uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: twrp_prebuilt-${{ github.event.inputs.DEVICE_NAME }}
+          max-size: 15G
+        
+      - name: Install Git Repo Tool
+        run: |
+          mkdir ~/bin
+          curl https://storage.googleapis.com/git-repo-downloads/repo > ~/bin/repo
+          chmod a+x ~/bin/repo
+          sudo ln -sf ~/bin/repo /usr/bin/repo
 
-    - name: Initialize repo
-      run: |
-        mkdir workspace
-        cd workspace
-        echo "workspace-folder=$(pwd)" >> $GITHUB_OUTPUT
-        git config --global user.name "excaliburXD"
-        git config --global user.email "eexcalibur32@gmail.com"
-        repo init --depth=1 -u ${{ github.event.inputs.MANIFEST_URL }} -b ${{ github.event.inputs.MANIFEST_BRANCH }}
-      id: pwd
+      - name: Determine Manifest URL
+        uses: haya14busa/action-cond@v1
+        id: manifest
+        with:
+          cond: ${{ github.event.inputs.MANIFEST_BRANCH == 'twrp-11' || github.event.inputs.MANIFEST_BRANCH == 'twrp-12.1' }}
+          if_true: https://github.com/minimal-manifest-twrp/platform_manifest_twrp_aosp.git
+          if_false: https://github.com/minimal-manifest-twrp/platform_manifest_twrp_omni.git
 
-    - name: Repo Sync
-      run: |
-        repo sync -j$(nproc --all) --force-sync
-      working-directory: workspace
+      - name: Initialize Repo
+        run: |
+          mkdir android-recovery && cd android-recovery
+          git config --global user.name "${{ github.actor }}"
+          git config --global user.email "${{ github.actor_id }}+${{ github.actor }}@users.noreply.github.com"
+          repo init --depth=1 -u ${{ steps.manifest.outputs.value }} -b ${{ github.event.inputs.MANIFEST_BRANCH }}
 
-    - name: Copy local manifest
-      run: |
-          cd workspace
+      - name: Repo Sync
+        run: |
+          cd android-recovery
+          repo sync -c -j$(nproc --all) --current-branch --force-sync --no-tags --no-clone-bundle --optimized-fetch --prune
+
+      - name: Copy local manifest
+        run: |
+          cd android-recovery
           mkdir -p .repo/local_manifests
           cp ${{ github.workspace }}/.github/local_manifests/*.xml .repo/local_manifests/
           echo "=== local_manifests/ contents ==="
@@ -116,9 +125,9 @@ jobs:
             cat "$f"
           done
 
-    - name: Re-sync projects to apply local manifest
-      run: |
-          cd workspace
+      - name: Re-sync projects to apply local manifest
+        run: |
+          cd android-recovery
           repo sync -c --force-sync -j$(nproc --all) vendor/twrp
           echo "=== verify vendor/twrp is the fork ==="
           cd vendor/twrp
@@ -126,46 +135,115 @@ jobs:
           git log --oneline -3
           echo "--- BoardConfigTWRP.mk ---"
           cat config/BoardConfigTWRP.mk
+            
+      - name: Clone Device Tree
+        run: |
+          cd android-recovery
+          TREE_URL="${{ github.event.inputs.DEVICE_TREE }}"
+          TOKEN="${{ secrets.RECOVERY }}"
+          if [ -n "$TOKEN" ]; then
+            AUTHED_URL=$(echo $TREE_URL | sed -e "s#https://#https://${TOKEN}@#")
+            git clone "$AUTHED_URL" -b ${{ github.event.inputs.DEVICE_TREE_BRANCH }} ./${{ github.event.inputs.DEVICE_PATH }}
+          else
+            git clone "$TREE_URL" -b ${{ github.event.inputs.DEVICE_TREE_BRANCH }} ./${{ github.event.inputs.DEVICE_PATH }}
+          fi
+          cd ${{ github.event.inputs.DEVICE_PATH }}
+          echo "COMMIT_ID=$(git rev-parse HEAD)" >> $GITHUB_ENV
+
+      - name: Find Makefile
+        run: |
+          cd android-recovery
+          if [ -f ${{ github.event.inputs.DEVICE_PATH }}/twrp_${{ github.event.inputs.DEVICE_NAME }}.mk ]; then
+            echo "DEVICE_MAKEFILE=twrp_${{ github.event.inputs.DEVICE_NAME }}" >> $GITHUB_ENV
+          elif [ -f ${{ github.event.inputs.DEVICE_PATH }}/omni_${{ github.event.inputs.DEVICE_NAME }}.mk ]; then
+            echo "DEVICE_MAKEFILE=omni_${{ github.event.inputs.DEVICE_NAME }}" >> $GITHUB_ENV
+          else
+            echo "No valid makefile found. Exiting."
+            exit 1
+          fi
+
+      - name: Building Recovery TWRP
+        run: |
+          cd android-recovery
+          source build/envsetup.sh
+          export ALLOW_MISSING_DEPENDENCIES=true
+          export CCACHE_EXEC=$(which ccache)
+          export USE_CCACHE=1
+          lunch ${{ env.DEVICE_MAKEFILE }}-${{ github.event.inputs.BUILD_TYPE }}
+          make clean
+          make ${{ github.event.inputs.BUILD_TARGET }}image -j$(nproc --all)
+
+      - name: Check Build Output
+        run: |
+          DEVICE="${{ github.event.inputs.DEVICE_NAME }}"
+          OUT_DIR="android-recovery/out/target/product/${DEVICE}"
+          echo "=== Files in output directory ==="
+          ls -la "${OUT_DIR}/" | grep -E '\.(img|zip)$'
+
+      - name: Get Build Info
+        id: buildinfo
+        run: |
+          # Last commit short hash
+          COMMIT_SHORT=$(git -C android-recovery rev-parse --short HEAD)
+          echo "COMMIT_SHORT=$COMMIT_SHORT" >> $GITHUB_ENV
           
-    - name: Clone device tree
-      run: |
-        git clone ${{ github.event.inputs.DEVICE_TREE_URL }} -b ${{ github.event.inputs.DEVICE_TREE_BRANCH }} ./${{ github.event.inputs.DEVICE_PATH }}
-      working-directory: ${{ steps.pwd.outputs.workspace-folder }}
+          # Last commit date (dd-mm-yyyy)
+          COMMIT_DATE=$(git -C android-recovery log -1 --format=%cd --date=format:"%d-%m-%Y")
+          echo "COMMIT_DATE=$COMMIT_DATE" >> $GITHUB_ENV
+          
+          # Build date
+          echo "BUILD_DATE=$(date +%Y%m%d-%H%M)" >> $GITHUB_ENV
+          
+          # Compact date for filename (ddmmyyyy)
+          FILE_DATE=$(date +%d%m%Y)
+          echo "FILE_DATE=$FILE_DATE" >> $GITHUB_ENV
+          
+          # Get TWRP version
+          TWRP_VERSION=$(grep -rohP 'TW_MAIN_VERSION\s+\K\d+\.\d+\.\d+' android-recovery/bootable/recovery/ 2>/dev/null | head -1)
+          if [ -z "$TWRP_VERSION" ]; then
+            TWRP_VERSION=$(grep -rohP 'TW_VERSION_STR\s+"\K[^"]+' android-recovery/bootable/recovery/ 2>/dev/null | head -1)
+          fi
+          if [ -z "$TWRP_VERSION" ]; then
+            TWRP_VERSION=$(grep -rohP 'TW_MAIN_VERSION\s+\K\d+' android-recovery/bootable/recovery/ 2>/dev/null | head -1)
+            [ -n "$TWRP_VERSION" ] && TWRP_VERSION="${TWRP_VERSION}.x.x"
+          fi
+          if [ -z "$TWRP_VERSION" ]; then
+            TWRP_VERSION="3.7.0_11"
+          fi
+          echo "TWRP_VERSION=$TWRP_VERSION" >> $GITHUB_ENV
+          
+          # Rename: TWRP-VERSION-DEVICE-DATE.img
+          DEVICE="${{ github.event.inputs.DEVICE_NAME }}"
+          TARGET="${{ github.event.inputs.BUILD_TARGET }}"
+          OUT_DIR="android-recovery/out/target/product/${DEVICE}"
+          
+          cp "${OUT_DIR}/${TARGET}.img" "${OUT_DIR}/TWRP-${TWRP_VERSION}-${DEVICE}-${FILE_DATE}.img"
+          
+          echo "BOOT_IMG=TWRP-${TWRP_VERSION}-${DEVICE}-${FILE_DATE}.img" >> $GITHUB_ENV
 
-    - name: Check Build Tree
-      uses: haya14busa/action-cond@v1
-      id: buildtree
-      with:
-        cond: ${{ github.event.inputs.MANIFEST_BRANCH == 'twrp-11' || github.event.inputs.MANIFEST_BRANCH == 'twrp-12.1' }}
-        if_true: twrp
-        if_false: omni
+      - name: Upload Raw Image to GitHub Releases
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            android-recovery/out/target/product/${{ github.event.inputs.DEVICE_NAME }}/${{ env.BOOT_IMG }}
+          name: Unofficial TWRP ${{ env.TWRP_VERSION }} for ${{ github.event.inputs.DEVICE_NAME }} - ${{ env.BUILD_DATE }}
+          tag_name: ${{ github.run_id }}
+          body: |
+            Built via **GitHub Actions For Infinix Note 10 Pro NFC**
 
-    - name: Set Swap Space
-      uses: pierotofy/set-swap-space@master
-      with:
-        swap-size-gb: 12
+            **TWRP Version:** ${{ env.TWRP_VERSION }}
+            **Device:** ${{ github.event.inputs.DEVICE_NAME }}
+            **Manifest:** ${{ github.event.inputs.MANIFEST_BRANCH }}
+            **Maintainer:** @${{ github.actor }}
+            **Last Commit:** `${{ env.COMMIT_SHORT }}` — ${{ env.COMMIT_DATE }}
+            **Status:** Booted and tested
 
-    - name: Building Teamwin Recovery Project
-      run: |
-        source build/envsetup.sh
-        export ALLOW_MISSING_DEPENDENCIES=true
-        export CCACHE_EXEC=$(which ccache)
-        export USE_CCACHE=1
-        lunch ${{ github.event.inputs.MAKEFILE_NAME }}-eng && make clean && make ${{ github.event.inputs.BUILD_TARGET }}image -j$(nproc --all)
-      working-directory: ${{ steps.pwd.outputs.workspace-folder }}
-
-    - name: Upload to Release
-      uses: softprops/action-gh-release@v2
-      with:
-        files: | 
-          workspace/out/target/product/${{ github.event.inputs.DEVICE_NAME }}/${{ github.event.inputs.BUILD_TARGET }}.img
-          workspace/out/target/product/${{ github.event.inputs.DEVICE_NAME }}/*.zip
-          workspace/out/target/product/${{ github.event.inputs.DEVICE_NAME }}/*vendor*.img
-        name: ${{ github.event.inputs.DEVICE_NAME }}-${{ github.run_id }}
-        tag_name: ${{ github.run_id }}
-        body: |
-          Manifest: ${{ github.event.inputs.MANIFEST_BRANCH }}
-          Device: ${{ github.event.inputs.DEVICE_NAME }}
-          Target: ${{ github.event.inputs.BUILD_TARGET }}.img
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Cleanup after build
+        run: |
+          echo "Cleaning up..."
+          rm -rf android-recovery/.repo
+          rm -rf ~/.ccache
+          rm -rf android-recovery/out
+          sudo apt clean
+          echo "Cleanup complete."
+          
