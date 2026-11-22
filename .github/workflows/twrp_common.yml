@@ -58,7 +58,7 @@ jobs:
 
     # You might want to Checkout your repo first, but not mandatory
     - name: Check Out
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
 
     # Cleanup The Actions Workspace Using Custom Composite Run Actions
     - name: Cleanup
